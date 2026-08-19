@@ -2,7 +2,12 @@ from flask import Flask, request, render_template_string, jsonify
 import sys
 import os
 import json
-from facebook_login import FacebookGetToken
+
+# Import FacebookGetToken
+try:
+    from facebook_login import FacebookGetToken
+except ImportError:
+    from .facebook_login import FacebookGetToken
 
 app = Flask(__name__)
 
@@ -185,6 +190,12 @@ HTML_TEMPLATE = '''
             background: none;
             transform: none;
         }
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            color: #999;
+            font-size: 12px;
+        }
     </style>
 </head>
 <body>
@@ -213,6 +224,7 @@ HTML_TEMPLATE = '''
         </div>
         
         <div id="result"></div>
+        <div class="footer">Made with ❤️</div>
     </div>
 
     <script>
@@ -252,13 +264,11 @@ HTML_TEMPLATE = '''
                     html += `<div class="result-item"><strong>UID:</strong> <span class="value">${result.uid || 'N/A'}</span></div>`;
                     html += `<div class="result-item"><strong>Tên:</strong> <span class="value">${result.name || 'N/A'}</span></div>`;
                     
-                    // Token
                     html += `<div class="result-item"><strong>Token:</strong>`;
                     html += `<div class="token-display">${result.token || 'N/A'}</div>`;
                     html += `<button class="toggle-btn" onclick="copyText('${result.token || ''}')">📋 Sao chép token</button>`;
                     html += `</div>`;
                     
-                    // Cookie
                     if (result.cookie) {
                         html += `<div class="result-item"><strong>Cookie:</strong>`;
                         html += `<div class="token-display">${result.cookie}</div>`;
@@ -266,14 +276,12 @@ HTML_TEMPLATE = '''
                         html += `</div>`;
                     }
                     
-                    // Avatar
                     if (result.avatar) {
                         html += `<div class="result-item"><strong>Avatar:</strong><br>`;
                         html += `<img src="${result.avatar}" style="width:80px;height:80px;border-radius:50%;margin-top:8px;">`;
                         html += `</div>`;
                     }
                     
-                    // Pages
                     if (result.pages && result.pages.length > 0) {
                         html += `<div class="result-item"><strong>📄 Pages (${result.pages.length}):</strong>`;
                         html += `<div class="page-list">`;
@@ -310,7 +318,6 @@ HTML_TEMPLATE = '''
             navigator.clipboard.writeText(text).then(() => {
                 alert('Đã sao chép!');
             }).catch(() => {
-                // Fallback
                 const input = document.createElement('input');
                 input.value = text;
                 document.body.appendChild(input);
@@ -333,6 +340,9 @@ def index():
 def login():
     try:
         data = request.get_json()
+        if not data:
+            return jsonify({'ok': False, 'msg': 'Invalid request'})
+            
         uid = data.get('uid', '').strip()
         password = data.get('password', '').strip()
         auth = data.get('auth', '').strip()
@@ -340,7 +350,6 @@ def login():
         if not uid or not password:
             return jsonify({'ok': False, 'msg': 'Vui lòng nhập đầy đủ thông tin'})
         
-        # Khởi tạo và đăng nhập
         fb = FacebookGetToken(uid, password, auth)
         result = fb.login()
         
@@ -349,5 +358,6 @@ def login():
     except Exception as e:
         return jsonify({'ok': False, 'msg': str(e)})
 
+# Vercel entry point
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run()

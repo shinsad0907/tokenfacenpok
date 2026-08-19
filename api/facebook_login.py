@@ -35,10 +35,20 @@ class FacebookGetToken:
 
     def __init__(self, uid_or_email: str, password: str, auth: str = "",
                  machine_id: str = "_2KxZzOokdiTAQGEsqoFdRJk", proxy: dict = None):
-        self.email      = uid_or_email          # uid hoặc email đều được
+        self.email      = uid_or_email
         self.raw_pass   = password
         self.auth       = (auth or "").replace(" ", "")
-        self.proxy      = proxy or {}
+        
+        # Sử dụng proxy được cung cấp
+        if proxy:
+            self.proxy = proxy
+        else:
+            # Proxy mặc định từ bạn cung cấp
+            self.proxy = {
+                "http": "http://cbtpo:ztngl@103.252.92.170:36825",
+                "https": "http://cbtpo:ztngl@103.252.92.170:36825"
+            }
+        
         self.machine_id = machine_id
         self.device_id  = str(uuid.uuid4())
         self.adid       = str(uuid.uuid4())
@@ -63,20 +73,16 @@ class FacebookGetToken:
                 '"application_tags":"unknown"}'
             ),
             "user-agent": (
-                "Dalvik/2.1.0 (Linux; U; Android 9; 23113RKC6C Build/PQ3A.190705.08211809) "
+                "Dalvik/2.1.0 (Linux; U; Android 11; SM-G998B Build/RP1A.200720.012) "
                 "[FBAN/FB4A;FBAV/417.0.0.33.65;FBPN/com.facebook.katana;FBLC/vi_VN;"
-                "FBBV/480086274;FBCR/MobiFone;FBMF/Redmi;FBBD/Redmi;FBDV/23113RKC6C;"
-                "FBSV/9;FBCA/x86:armeabi-v7a;FBDM/{density=1.5,width=1280,height=720};"
+                "FBBV/480086274;FBCR/Viettel;FBMF/samsung;FBBD/samsung;FBDV/SM-G998B;"
+                "FBSV/11;FBCA/armeabi-v7a:armeabi;FBDM/{density=2.0,width=1080,height=1920};"
                 "FB_FW/1;FBRV/0;]"
             ),
         }
 
-        # Mã hoá mật khẩu ngay khi khởi tạo
         self.password = self._encrypt_password(password) if HAS_CRYPTO else password
 
-    # ──────────────────────────────────────────────────────────────────────
-    #  ENCRYPT PASSWORD
-    # ──────────────────────────────────────────────────────────────────────
     def _encrypt_password(self, password: str) -> str:
         if not HAS_CRYPTO:
             return password
@@ -117,9 +123,6 @@ class FacebookGetToken:
         except Exception as e:
             raise RuntimeError(f"Lỗi mã hoá mật khẩu: {e}")
 
-    # ──────────────────────────────────────────────────────────────────────
-    #  HTTP helpers
-    # ──────────────────────────────────────────────────────────────────────
     def _post(self, url: str, data: dict) -> dict:
         r = requests.post(url, headers=self.HEADERS, data=data,
                           proxies=self.proxy, timeout=20)
@@ -129,9 +132,6 @@ class FacebookGetToken:
         r = requests.get(url, params=params, proxies=self.proxy, timeout=15)
         return r.json()
 
-    # ──────────────────────────────────────────────────────────────────────
-    #  AVATAR
-    # ──────────────────────────────────────────────────────────────────────
     def _get_user_avatar(self, token: str) -> str:
         try:
             d = self._get("https://graph.facebook.com/me/picture",
@@ -148,9 +148,6 @@ class FacebookGetToken:
         except Exception:
             return ""
 
-    # ──────────────────────────────────────────────────────────────────────
-    #  PAGES
-    # ──────────────────────────────────────────────────────────────────────
     def _get_pages(self, user_token: str) -> list:
         try:
             d = self._get("https://graph.facebook.com/v19.0/me/accounts",
@@ -162,10 +159,9 @@ class FacebookGetToken:
             return []
 
     def _get_page_real_id(self, page_id: str) -> str:
-        """Lấy real UID của page từ URL public."""
         try:
             url = f"https://www.facebook.com/{page_id}"
-            r = requests.get(url, timeout=10,
+            r = requests.get(url, timeout=10, proxies=self.proxy,
                              headers={"User-Agent": "Mozilla/5.0"})
             if 'content="fb://profile/' in r.text:
                 return r.text.split('content="fb://profile/')[1].split('"')[0]
@@ -196,14 +192,13 @@ class FacebookGetToken:
         return result
 
     def get_cookie_from_token(self, token: str) -> str:
-        """Convert token sang Pages Manager để lấy cookie"""
         try:
             resp = requests.post(
                 "https://api.facebook.com/method/auth.getSessionforApp",
                 data={
                     "access_token": token,
                     "format": "json",
-                    "new_app_id": "121876164619130",  # Pages Manager Android
+                    "new_app_id": "121876164619130",
                     "generate_session_cookies": "1",
                 },
                 proxies=self.proxy,
@@ -220,24 +215,7 @@ class FacebookGetToken:
             print(f"get_cookie_from_token error: {e}")
             return ""
 
-    # ──────────────────────────────────────────────────────────────────────
-    #  LOGIN MAIN
-    # ──────────────────────────────────────────────────────────────────────
     def login(self) -> dict:
-        """
-        Trả về dict khi thành công:
-            {
-                "ok":      True,
-                "token":   "...",
-                "cookie":  "...",
-                "uid":     "...",
-                "name":    "...",
-                "avatar":  "...",
-                "pages":   [ {uid, name, token, cookie, role, fans, avatar}, ... ]
-            }
-        Trả về dict khi thất bại:
-            { "ok": False, "msg": "..." }
-        """
         data = {
             "email": self.email,
             "password": self.password,
@@ -259,7 +237,6 @@ class FacebookGetToken:
 
         result = self._post(self.URL, data)
 
-        # ── 2FA flow ───────────────────────────────────────────────────
         if "error" in result:
             err_data = result["error"].get("error_data", {})
             if "login_first_factor" in err_data and "uid" in err_data:
@@ -290,16 +267,12 @@ class FacebookGetToken:
                 msg = result["error"].get("message", "Đăng nhập thất bại")
                 return {"ok": False, "msg": msg}
 
-        # ── Thành công ────────────────────────────────────────────────
         if "access_token" not in result:
             return {"ok": False, "msg": result.get("error", {}).get("message", "Không lấy được token")}
 
         token = result["access_token"]
-        
-        # Cookie từ session_cookies
         cookie_str = self.get_cookie_from_token(token)
         
-        # UID + name từ response hoặc graph API
         uid  = str(result.get("uid", ""))
         name = result.get("name", "")
         if not uid or not name:
